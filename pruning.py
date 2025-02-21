@@ -1,16 +1,18 @@
 import torch.nn as nn
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Attention, GPT2MLP
 
-def prune_layer(layer: nn.Module, idx, device, dim=0) -> None:
+def pruned_layer(layer: nn.Module, idx, device, dim=0) -> None:
     num_neurons = idx.size(0)
     if dim == 0:
-        new_layer = nn.Linear(num_neurons, layer.out_features).to(device)
-        new_layer.weight.data = layer.weight.data[idx, :]
-        new_layer.bias.data = layer.bias.data
-    elif dim == 1:
-        new_layer = nn.Linear(layer.in_features, num_neurons).to(device)
+        new_layer = nn.Linear(num_neurons, layer.out_features, bias=layer.bias is not None).to(device)
         new_layer.weight.data = layer.weight.data[:, idx]
-        new_layer.bias.data = layer.bias.data
+        if layer.bias is not None:
+            new_layer.bias.data = layer.bias.data[idx]
+    elif dim == 1:
+        new_layer = nn.Linear(layer.in_features, num_neurons, bias=layer.bias is not None).to(device)
+        new_layer.weight.data = layer.weight.data[idx, :]
+        if layer.bias is not None:
+            new_layer.bias.data = layer.bias.data[idx]
     else:
         raise ValueError("Invalid dimension")
     return new_layer
@@ -24,29 +26,9 @@ def prune_mlp(model, mult_factor: float = 4.0) -> None:
         if isinstance(module, GPT2Block):
             importances = module.mlp.c_fc.importance_scores
             num_neurons = int(module.mlp.c_fc.in_features * mult_factor)
-
             idx = importances.argsort(descending=True)[:num_neurons]
-            dense1 = module.mlp.c_fc
-            dense2 = module.mlp.c_proj
-            
-            module.mlp.c_fc = nn.Linear(dense1.in_features, num_neurons).to(
-                model.device
-            )
-            module.mlp.c_proj = nn.Linear(num_neurons, dense2.out_features).to(
-                model.device
-            )
-            
-            new_fc = nn.Linear(dense1.in_features, num_neurons, bias=dense1.bias is not None).to(model.device)
-            new_proj = nn.Linear(num_neurons, dense2.out_features, bias=dense2.bias is not None).to(model.device)
-            new_fc.weight.data = dense1.weight.data[idx, :]
-            if dense1.bias is not None:
-                new_fc.bias.data = dense1.bias.data[idx]
-
-            new_proj.weight.data = dense2.weight.data[:, idx]
-            if dense2.bias is not None:
-                new_proj.bias.data = dense2.bias.data
-            module.mlp.c_fc = new_fc
-            module.mlp.c_proj = new_proj
+            module.mlp.c_fc = pruned_layer(module.mlp.c_fc, idx, model.device, dim=1)
+            module.mlp.c_proj = pruned_layer(module.mlp.c_proj, idx, model.device, dim=0)
 
 
 class CausalSelfAttention(nn.Module):
