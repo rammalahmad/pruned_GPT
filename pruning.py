@@ -1,5 +1,19 @@
 import torch.nn as nn
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Attention, GPT2MLP
+import torch
+    
+
+def prune_mlp(model, mult_factor: float = 4.0) -> None:
+    # goal: trim the width of the MLP layers in the transformer blocks
+    # mult_factor: the ratio of the input dimension to the input dimension of the MLP layers
+
+    for module in model.modules():
+        if isinstance(module, GPT2MLP):
+            importances = module.c_fc.importance_scores
+            num_neurons = int(module.c_fc.in_features * mult_factor)
+            idx = importances.argsort(descending=True)[:num_neurons]
+            module.c_fc = pruned_layer(module.c_fc, idx, model.device, dim=1)
+            module.c_proj = pruned_layer(module.c_proj, idx, model.device, dim=0)
 
 def pruned_layer(layer: nn.Module, idx, device, dim=0) -> None:
     num_neurons = idx.size(0)
@@ -16,19 +30,34 @@ def pruned_layer(layer: nn.Module, idx, device, dim=0) -> None:
     else:
         raise ValueError("Invalid dimension")
     return new_layer
-    
 
-def prune_mlp(model, mult_factor: float = 4.0) -> None:
-    # goal: trim the width of the MLP layers in the transformer blocks
-    # mult_factor: the ratio of the input dimension to the input dimension of the MLP layers
-
+def prune_heads(model, new_num_heads:int) -> None:
     for module in model.modules():
-        if isinstance(module, GPT2MLP):
-            importances = module.c_fc.importance_scores
-            num_neurons = int(module.c_fc.in_features * mult_factor)
-            idx = importances.argsort(descending=True)[:num_neurons]
-            module.c_fc = pruned_layer(module.c_fc, idx, model.device, dim=1)
-            module.c_proj = pruned_layer(module.c_proj, idx, model.device, dim=0)
+        if isinstance(module, GPT2Attention):
+            assert new_num_heads <= module.num_heads, "Number of heads to keep is greater than the number of heads in the model"
+            importances = module.c_proj.importance_scores
+            top_heads = importances.argsort(descending=True)[:new_num_heads]
+            head_size = module.head_dim
+            split_size = module.split_size
+            full_indices = torch.cat([
+                torch.arange(h * head_size, (h + 1) * head_size) for h in top_heads
+            ])
+
+            # Adjust indices for QKV weights
+            index_attn = torch.cat([
+                full_indices,
+                full_indices + split_size,  # Key
+                full_indices + 2 * split_size  # Value
+            ])
+
+            # Apply pruning
+            module.c_attn = pruned_layer(module.c_attn, index_attn, model.device, dim=1)
+            module.c_proj = pruned_layer(module.c_proj, full_indices, model.device, dim=0)
+
+            # Update the split size and number of heads
+            module.split_size = (module.split_size // module.num_heads) * new_num_heads
+            module.num_heads = new_num_heads
+            
 
 
 class CausalSelfAttention(nn.Module):
