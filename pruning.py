@@ -23,12 +23,12 @@ def prune_mlp(model, mult_factor: float = 4.0) -> None:
     # mult_factor: the ratio of the input dimension to the input dimension of the MLP layers
 
     for module in model.modules():
-        if isinstance(module, GPT2Block):
-            importances = module.mlp.c_fc.importance_scores
-            num_neurons = int(module.mlp.c_fc.in_features * mult_factor)
+        if isinstance(module, GPT2MLP):
+            importances = module.c_fc.importance_scores
+            num_neurons = int(module.c_fc.in_features * mult_factor)
             idx = importances.argsort(descending=True)[:num_neurons]
-            module.mlp.c_fc = pruned_layer(module.mlp.c_fc, idx, model.device, dim=1)
-            module.mlp.c_proj = pruned_layer(module.mlp.c_proj, idx, model.device, dim=0)
+            module.c_fc = pruned_layer(module.c_fc, idx, model.device, dim=1)
+            module.c_proj = pruned_layer(module.c_proj, idx, model.device, dim=0)
 
 
 class CausalSelfAttention(nn.Module):
