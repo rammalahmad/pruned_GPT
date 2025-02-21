@@ -8,7 +8,7 @@ def prune_mlp(model, mult_factor: float = 4.0) -> None:
 
     for module in model.modules():
         if isinstance(module, GPT2Block):
-            importances = module.mlp.c_fc.calculated_importance
+            importances = module.mlp.c_fc.importance_scores
             num_neurons = int(module.mlp.c_fc.in_features * mult_factor)
 
             idx = importances.argsort(descending=True)[:num_neurons]
@@ -37,14 +37,76 @@ def prune_mlp(model, mult_factor: float = 4.0) -> None:
     return model
 
 
+
+class MultiHeadAttention(nn.Module):
+    """implements multi-headed masked self-attention using tensor operations"""
+
+    def __init__(self, num_heads, head_size, n_embd, device, block_size, dropout=0.2):
+        super().__init__()
+        gen = torch.Generator(device=device)
+        gen.manual_seed(42)
+
+        self.num_heads = num_heads
+        self.n_embd = n_embd
+        self.device = device
+        self.block_size = block_size
+        self.dropout = dropout
+        self.head_size = head_size
+
+        key = (
+            torch.randn(num_heads, n_embd, head_size, generator=gen, device=device)
+            * (n_embd * num_heads) ** -0.5
+        )
+        query = (
+            torch.randn(num_heads, n_embd, head_size, generator=gen, device=device)
+            * (n_embd * num_heads) ** -0.5
+        )
+        value = (
+            torch.randn(num_heads, n_embd, head_size, generator=gen, device=device)
+            * (n_embd * num_heads) ** -0.5
+        )
+
+        self.key = nn.Parameter(key)
+        self.query = nn.Parameter(query)
+        self.value = nn.Parameter(value)
+
+        self.proj = nn.Linear(n_embd, n_embd)
+
+        self.dropout = nn.Dropout(dropout)
+
+        # (B, T, n_embd) x (num_heads, n_embd, head_size) --> (B, num_heads, T, head_size)
+        self.register_buffer(
+            "tril", torch.tril(torch.ones(num_heads, block_size, block_size))
+        )
+
+    def forward(self, x):
+        B, T, C = x.shape
+        x = x.unsqueeze(1)  # (batch_size, 1, context_length, n_embd)
+        k = x @ self.key  # (batch_size, num_heads, context_length, head_size)
+        q = x @ self.query  # (batch_size, num_heads, context_length, head_size)
+
+        wei = (
+            q @ k.transpose(-2, -1) * (self.head_size**-0.5)
+        )  # (bs, nh, cl, hs) x (bs, nh, hs, cl) -> (bs, nh, cl, cl)
+        wei = wei.masked_fill(self.tril[:, :T, :T] == 0, float("-inf"))
+        wei = F.softmax(wei, dim=-1)  # (bs, nh, cl, cl)
+
+        v = x @ self.value  # (bs, 1, cl, ne) x (nh, ne, hs) -> (bs, nh, cl, hs)
+        out = wei @ v  # (bs, nh, cl, cl) x (bs, nh, cl, hs) -> (bs, nh, cl, hs)
+        out = out.permute(0, 2, 1, 3)  # (bs, cl, nh, hs)
+        out = out.reshape(
+            out.shape[0], out.shape[1], self.n_embd
+        )  # (bs, cl, n_embd) = (B, T, C)
+
+        out = self.proj(out)
+        out = self.dropout(out)
+        return out
+
 def prune_heads(model, n: list[int] | float) -> None:
     # goal: trim the attention heads' layer weights using the same approach as the `prune_neurons`
 
-    constraints = None
-    c = 0
-
     for module in model.modules():
-        if isinstance(module, Block):
+        if isinstance(module, GPT2Block):
             # now the multi-head attention
             for head in module.sa.heads:
                 # key,value,query weight shape: (head_size, n_embd) # n_embd
