@@ -1,7 +1,7 @@
 import torch.nn as nn
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Attention, GPT2MLP
 import torch
-    
+from .utils import compute_pruned_sums
 
 def prune_mlp(model, mult_factor: float = 4.0) -> None:
     # goal: trim the width of the MLP layers in the transformer blocks
@@ -35,27 +35,39 @@ def prune_heads(model, new_num_heads:int) -> None:
     for module in model.modules():
         if isinstance(module, GPT2Attention):
             assert new_num_heads <= module.num_heads, "Number of heads to keep is greater than the number of heads in the model"
-            importances = module.c_proj.importance_scores
-            top_heads = importances.argsort(descending=True)[:new_num_heads]
             head_size = module.head_dim
             split_size = module.split_size
-            full_indices = torch.cat([
-                torch.arange(h * head_size, (h + 1) * head_size) for h in top_heads
-            ])
+            
+            importances = module.c_proj.importance_scores
+            top_heads = importances.argsort(descending=True)[:new_num_heads]
+            pruned_heads = importances.argsort(descending=True)[new_num_heads:]
+            
+            def get_full_indices(heads):
+                return torch.cat([torch.arange(h * head_size, (h + 1) * head_size) for h in heads])
+
+            full_indices_keep = get_full_indices(top_heads)
+            
+            # Calculate the sum of pruned heads for key, query, and value
+            pruned_sum, pruned_bias_sum = compute_pruned_sums(module, pruned_heads)
 
             # Adjust indices for QKV weights
             index_attn = torch.cat([
-                full_indices,
-                full_indices + split_size,  # Key
-                full_indices + 2 * split_size  # Value
+                full_indices_keep,
+                full_indices_keep + split_size,  # Key
+                full_indices_keep + 2 * split_size  # Value
             ])
 
             # Apply pruning
-            module.c_attn = pruned_layer(module.c_attn, index_attn, model.device, dim=1)
-            module.c_proj = pruned_layer(module.c_proj, full_indices, model.device, dim=0)
+            pruned_attn_layer = pruned_layer(module.c_attn, index_attn, model.device, dim=1)
+            module.c_attn.weight.data = pruned_sum - (len(pruned_heads) - 1) * pruned_attn_layer.weight.data
+            if module.c_attn.bias is not None:
+                module.c_attn.bias.data = pruned_bias_sum - (len(pruned_heads) - 1) * pruned_attn_layer.bias.data
+            module.c_proj = pruned_layer(module.c_proj, full_indices_keep, model.device, dim=0)
+            
 
             # Update the split size and number of heads
-            module.split_size = (module.split_size // module.num_heads) * new_num_heads
+            assert (module.split_size // module.num_heads) * new_num_heads == len(full_indices_keep), "Invalid split size"
+            module.split_size = len(full_indices_keep)
             module.num_heads = new_num_heads
             
 
