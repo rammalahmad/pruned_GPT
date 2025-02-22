@@ -69,27 +69,6 @@ def pruned_layer(layer: nn.Module, idx, device, dim=0) -> nn.Module:
 
     return new_layer
 
-# def pruned_layer(layer: nn.Module, idx, device, dim=0) -> nn.Linear:
-#     num_neurons = idx.size(0)
-#     in_features, out_features = layer.weight.data.size()
-    
-#     # Ensure dtype consistency
-#     dtype = layer.weight.dtype  
-
-#     if dim == 0:
-#         new_layer = nn.Linear(num_neurons, out_features, bias=layer.bias is not None).to(device, dtype=dtype)
-#         new_layer.weight.data = layer.weight.data[idx, :].to(dtype).T
-#     elif dim == 1:
-#         new_layer = nn.Linear(in_features, num_neurons, bias=layer.bias is not None).to(device, dtype=dtype)
-#         new_layer.weight.data = layer.weight.data[:, idx].to(dtype).T
-#         if layer.bias is not None:
-#             new_layer.bias.data = layer.bias.data[idx].to(dtype)
-#     else:
-#         raise ValueError("Invalid dimension")
-#     if hasattr(layer, "importance_scores"):
-#         new_layer.importance_scores = layer.importance_scores
-#     return new_layer
-
 
 def pruned_layernorm(layer: LayerNorm, idx, device) -> LayerNorm:
     num_neurons = idx.size(0)
