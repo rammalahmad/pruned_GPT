@@ -141,20 +141,21 @@ def pruned_embedding(layer: nn.Embedding, idx, device, dim=0) -> nn.Embedding:
     
 def compute_pruned_sums(module, pruned_heads: torch.Tensor) -> torch.Tensor:
     """Computes the sum of pruned heads for QKV weights and bias."""
+    dtype = module.c_attn.weight.dtype
     head_size = module.head_dim
     num_heads = module.num_heads
     embed_dim = module.c_attn.nx
     remaining_heads = num_heads - len(pruned_heads)
     
     W_q, W_k, W_v = module.c_attn.weight.data.chunk(3, dim=1)
-    W_q = W_q.view(embed_dim, num_heads, head_size)
-    W_k = W_k.view(embed_dim, num_heads, head_size)
-    W_v = W_v.view(embed_dim, num_heads, head_size)
+    W_q = W_q.view(embed_dim, num_heads, head_size).transpose(0, 1)  # (num_heads, embed_dim, head_size)
+    W_k = W_k.view(embed_dim, num_heads, head_size).transpose(0, 1)
+    W_v = W_v.view(embed_dim, num_heads, head_size).transpose(0, 1)
 
     # Compute sum over the pruned heads
-    pruned_q = W_q[:, pruned_heads, :].sum(dim=1)  # Sum over pruned heads
-    pruned_k = W_k[:, pruned_heads, :].sum(dim=1)
-    pruned_v = W_v[:, pruned_heads, :].sum(dim=1)
+    pruned_q = W_q[pruned_heads, :, :].sum(dim=0)  # Sum over pruned heads (embed_dim, head_size)
+    pruned_k = W_k[pruned_heads, :, :].sum(dim=0)
+    pruned_v = W_v[pruned_heads, :, :].sum(dim=0)
     pruned_q = pruned_q.unsqueeze(1).repeat(1, remaining_heads, 1)  # (embed_dim, remaining_heads, head_size)
     pruned_k = pruned_k.unsqueeze(1).repeat(1, remaining_heads, 1)
     pruned_v = pruned_v.unsqueeze(1).repeat(1, remaining_heads, 1)
@@ -165,7 +166,7 @@ def compute_pruned_sums(module, pruned_heads: torch.Tensor) -> torch.Tensor:
     pruned_v = pruned_v.view(embed_dim, remaining_heads * head_size)
 
     # Concatenate the QKV components to match attention structure
-    pruned_sum = torch.cat([pruned_q, pruned_k, pruned_v], dim=1)
+    pruned_sum = torch.cat([pruned_q, pruned_k, pruned_v], dim=1).to(dtype)
     
     if module.c_attn.bias is not None:
         # Split bias into Q, K, V
@@ -186,7 +187,7 @@ def compute_pruned_sums(module, pruned_heads: torch.Tensor) -> torch.Tensor:
         pruned_b_v = pruned_b_v.unsqueeze(0).repeat(remaining_heads, 1)
 
         # Flatten and concatenate biases
-        pruned_bias_sum = torch.cat([pruned_b_q.flatten(), pruned_b_k.flatten(), pruned_b_v.flatten()], dim=0)
+        pruned_bias_sum = torch.cat([pruned_b_q.flatten(), pruned_b_k.flatten(), pruned_b_v.flatten()], dim=0).to(dtype)
     else:
         pruned_bias_sum = None
     
@@ -223,6 +224,7 @@ def pruned_attention(attn_layer, top_heads, model_device):
 
     # Apply pruning
     pruned_attn_layer = pruned_layer(attn_layer.c_attn, index_attn, model_device, dim=1)
+    attn_layer.c_attn = Conv1D(pruned_sum.shape[1], pruned_sum.shape[0]).to(model_device, dtype=attn_layer.c_attn.weight.dtype)
     attn_layer.c_attn.weight.data = pruned_sum - (len(pruned_heads) - 1) * pruned_attn_layer.weight.data
     if attn_layer.c_attn.bias is not None:
         attn_layer.c_attn.bias.data = pruned_bias_sum - (len(pruned_heads) - 1) * pruned_attn_layer.bias.data
