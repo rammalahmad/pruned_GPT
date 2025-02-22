@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Attention, GPT2MLP
 from torch.nn.modules.normalization import LayerNorm
+from transformers.pytorch_utils import Conv1D
 
 def model_size(model):
     """Computes the number of parameters in a model."""
@@ -16,25 +17,78 @@ def model_size(model):
 
     print(f"Corrected Total Parameters: {num_params:,}")
     
-def pruned_layer(layer: nn.Module, idx, device, dim=0) -> nn.Linear:
+def pruned_layer(layer: nn.Module, idx, device, dim=0) -> nn.Module:
+    """
+    Prunes a given layer and replaces it with the appropriate type:
+    - If the original layer is `Conv1D`, the new layer is `Conv1D`.
+    - If the original layer is `nn.Linear`, the new layer is `nn.Linear`.
+
+    Args:
+        layer (nn.Module): The original layer (Conv1D or Linear).
+        idx (torch.Tensor): Indices to keep.
+        device (torch.device): The device for the new layer.
+        dim (int): Dimension to prune (0 = input dim, 1 = output dim).
+
+    Returns:
+        nn.Module: The pruned layer (either Conv1D or Linear).
+    """
     num_neurons = idx.size(0)
-    in_features, out_features = layer.weight.data.size()
+    in_features, out_features = layer.weight.data.shape
     
     # Ensure dtype consistency
     dtype = layer.weight.dtype  
 
-    if dim == 0:
-        new_layer = nn.Linear(num_neurons, out_features, bias=layer.bias is not None).to(device, dtype=dtype)
-        new_layer.weight.data = layer.weight.data[idx, :].clone().to(dtype).T
-    elif dim == 1:
-        new_layer = nn.Linear(in_features, num_neurons, bias=layer.bias is not None).to(device, dtype=dtype)
-        new_layer.weight.data = layer.weight.data[:, idx].clone().to(dtype).T
+    # Check if the layer is Conv1D
+    is_conv1d = isinstance(layer, Conv1D)
+
+    if dim == 0:  # Prune input dimension
+        if is_conv1d:
+            new_layer = Conv1D(out_features, num_neurons).to(device, dtype=dtype)
+            new_layer.weight.data = layer.weight.data[idx, :].clone().to(dtype)  # No need to transpose
+        else:  # nn.Linear case
+            new_layer = nn.Linear(num_neurons, out_features, bias=layer.bias is not None).to(device, dtype=dtype)
+            new_layer.weight.data = layer.weight.data[idx, :].clone().to(dtype).T  # Transpose needed for Linear
+
+    elif dim == 1:  # Prune output dimension
+        if is_conv1d:
+            new_layer = Conv1D(num_neurons, in_features).to(device, dtype=dtype)
+            new_layer.weight.data = layer.weight.data[:, idx].clone().to(dtype)  # No need to transpose
+        else:  # nn.Linear case
+            new_layer = nn.Linear(in_features, num_neurons, bias=layer.bias is not None).to(device, dtype=dtype)
+            new_layer.weight.data = layer.weight.data[:, idx].clone().to(dtype).T  # Transpose needed for Linear
+        
         if layer.bias is not None:
             new_layer.bias.data = layer.bias.data[idx].clone().to(dtype)
+
     else:
-        raise ValueError("Invalid dimension")
+        raise ValueError("Invalid dimension for pruning")
+
+    # Preserve importance_scores if they exist
+    if hasattr(layer, "importance_scores"):
+        new_layer.importance_scores = layer.importance_scores.clone()
 
     return new_layer
+
+# def pruned_layer(layer: nn.Module, idx, device, dim=0) -> nn.Linear:
+#     num_neurons = idx.size(0)
+#     in_features, out_features = layer.weight.data.size()
+    
+#     # Ensure dtype consistency
+#     dtype = layer.weight.dtype  
+
+#     if dim == 0:
+#         new_layer = nn.Linear(num_neurons, out_features, bias=layer.bias is not None).to(device, dtype=dtype)
+#         new_layer.weight.data = layer.weight.data[idx, :].to(dtype).T
+#     elif dim == 1:
+#         new_layer = nn.Linear(in_features, num_neurons, bias=layer.bias is not None).to(device, dtype=dtype)
+#         new_layer.weight.data = layer.weight.data[:, idx].to(dtype).T
+#         if layer.bias is not None:
+#             new_layer.bias.data = layer.bias.data[idx].to(dtype)
+#     else:
+#         raise ValueError("Invalid dimension")
+#     if hasattr(layer, "importance_scores"):
+#         new_layer.importance_scores = layer.importance_scores
+#     return new_layer
 
 
 def pruned_layernorm(layer: LayerNorm, idx, device) -> LayerNorm:
@@ -46,9 +100,10 @@ def pruned_layernorm(layer: LayerNorm, idx, device) -> LayerNorm:
 
     # Copy weights and bias if affine transformation is used
     if layer.elementwise_affine:
-        new_layer.weight.data = layer.weight.data[idx].clone().to(dtype)
-        new_layer.bias.data = layer.bias.data[idx].clone().to(dtype)
-
+        new_layer.weight.data = layer.weight.data[idx].to(dtype)
+        new_layer.bias.data = layer.bias.data[idx].to(dtype)
+    if hasattr(layer, "importance_scores"):
+        new_layer.importance_scores = layer.importance_scores
     return new_layer
 
 

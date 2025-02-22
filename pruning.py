@@ -5,15 +5,15 @@ import torch
 from utils import compute_pruned_sums, pruned_layer, pruned_layernorm, pruned_embedding, pruned_attention
 
 
-def prune_mlp(model, mult_factor: float = 4.0) -> None:
+def prune_mlp(model, hidden_size:int) -> None:
     # goal: trim the width of the MLP layers in the transformer blocks
-    # mult_factor: the ratio of the input dimension to the input dimension of the MLP layers
+    # hidden_size: the new hidden size of the MLP
     # model = model.to("cpu") can be used for debugging to avoid cuda errors
-
+    # model.to("cpu")
     for module in model.modules():
         if isinstance(module, GPT2MLP):
             importances = module.c_fc.importance_scores
-            num_neurons = min(int(module.c_fc.nx * mult_factor), module.c_fc.weight.shape[1])
+            num_neurons = min(hidden_size, module.c_fc.weight.shape[1])
             idx = importances.argsort(descending=True)[:num_neurons]
             module.c_fc = pruned_layer(module.c_fc, idx, model.device, dim=1)
             module.c_proj = pruned_layer(module.c_proj, idx, model.device, dim=0)
