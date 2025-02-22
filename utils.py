@@ -18,11 +18,12 @@ def model_size(model):
     
 def pruned_layer(layer: nn.Module, idx, device, dim=0) -> None:
     num_neurons = idx.size(0)
+    in_features, out_features = layer.weight.data.size()
     if dim == 0:
-        new_layer = nn.Linear(num_neurons, layer.nf , bias=layer.bias is not None).to(device)
+        new_layer = nn.Linear(num_neurons, out_features , bias=layer.bias is not None).to(device)
         new_layer.weight.data = layer.weight.data[idx, :].clone()
     elif dim == 1:
-        new_layer = nn.Linear(layer.nx, num_neurons, bias=layer.bias is not None).to(device)
+        new_layer = nn.Linear(in_features, num_neurons, bias=layer.bias is not None).to(device)
         new_layer.weight.data = layer.weight.data[:, idx].clone()
         if layer.bias is not None:
             new_layer.bias.data = layer.bias.data[idx].clone()
