@@ -19,15 +19,13 @@ def model_size(model):
 def pruned_layer(layer: nn.Module, idx, device, dim=0) -> None:
     num_neurons = idx.size(0)
     if dim == 0:
-        new_layer = nn.Linear(num_neurons, layer.out_features, bias=layer.bias is not None).to(device)
-        new_layer.weight.data = layer.weight.data[:, idx]
-        if layer.bias is not None:
-            new_layer.bias.data = layer.bias.data[idx]
+        new_layer = nn.Linear(num_neurons, layer.nf , bias=layer.bias is not None).to(device)
+        new_layer.weight.data = layer.weight.data[idx, :].clone()
     elif dim == 1:
-        new_layer = nn.Linear(layer.in_features, num_neurons, bias=layer.bias is not None).to(device)
-        new_layer.weight.data = layer.weight.data[idx, :]
+        new_layer = nn.Linear(layer.nx, num_neurons, bias=layer.bias is not None).to(device)
+        new_layer.weight.data = layer.weight.data[:, idx].clone()
         if layer.bias is not None:
-            new_layer.bias.data = layer.bias.data[idx]
+            new_layer.bias.data = layer.bias.data[idx].clone()
     else:
         raise ValueError("Invalid dimension")
     return new_layer
@@ -74,7 +72,7 @@ def compute_pruned_sums(module, pruned_heads: torch.Tensor) -> torch.Tensor:
     """Computes the sum of pruned heads for QKV weights and bias."""
     head_size = module.head_dim
     num_heads = module.num_heads
-    embed_dim = module.c_attn.in_features
+    embed_dim = module.c_attn.nx
     remaining_heads = num_heads - len(pruned_heads)
     
     W_q, W_k, W_v = module.c_attn.weight.data.chunk(3, dim=1)
