@@ -73,29 +73,51 @@ def pruned_embedding(layer: nn.Embedding, idx, device, dim=0) -> nn.Embedding:
 def compute_pruned_sums(module, pruned_heads: torch.Tensor) -> torch.Tensor:
     """Computes the sum of pruned heads for QKV weights and bias."""
     head_size = module.head_dim
-    num_heads = module.num_heads   
-    W_q, W_k, W_v = module.c_attn.weight.data.chunk(3, dim=0)
-    W_q = W_q.view(num_heads, head_size, -1)
-    W_k = W_k.view(num_heads, head_size, -1)
-    W_v = W_v.view(num_heads, head_size, -1)
-    pruned_q = W_q[pruned_heads].sum(dim=0)
-    pruned_k = W_k[pruned_heads].sum(dim=0)
-    pruned_v = W_v[pruned_heads].sum(dim=0)
-    pruned_sum = torch.cat([pruned_q.repeat(num_heads-len(pruned_heads), 1),
-                            pruned_k.repeat(num_heads-len(pruned_heads), 1),
-                            pruned_v.repeat(num_heads-len(pruned_heads), 1)], dim=0)
+    num_heads = module.num_heads
+    embed_dim = module.c_attn.in_features
+    remaining_heads = num_heads - len(pruned_heads)
+    
+    W_q, W_k, W_v = module.c_attn.weight.data.chunk(3, dim=1)
+    W_q = W_q.view(embed_dim, num_heads, head_size)
+    W_k = W_k.view(embed_dim, num_heads, head_size)
+    W_v = W_v.view(embed_dim, num_heads, head_size)
+
+    # Compute sum over the pruned heads
+    pruned_q = W_q[:, pruned_heads, :].sum(dim=1)  # Sum over pruned heads
+    pruned_k = W_k[:, pruned_heads, :].sum(dim=1)
+    pruned_v = W_v[:, pruned_heads, :].sum(dim=1)
+    pruned_q = pruned_q.unsqueeze(1).repeat(1, remaining_heads, 1)  # (embed_dim, remaining_heads, head_size)
+    pruned_k = pruned_k.unsqueeze(1).repeat(1, remaining_heads, 1)
+    pruned_v = pruned_v.unsqueeze(1).repeat(1, remaining_heads, 1)
+
+    # Reshape back to (embed_dim, remaining_heads * head_size)
+    pruned_q = pruned_q.view(embed_dim, remaining_heads * head_size)  # (embed_dim, remaining_heads * head_size)
+    pruned_k = pruned_k.view(embed_dim, remaining_heads * head_size)
+    pruned_v = pruned_v.view(embed_dim, remaining_heads * head_size)
+
+    # Concatenate the QKV components to match attention structure
+    pruned_sum = torch.cat([pruned_q, pruned_k, pruned_v], dim=1)
     
     if module.c_attn.bias is not None:
-        b_q, b_k, b_v = module.c_attn.bias.data.chunk(3, dim=0)
-        b_q = b_q.view(num_heads, head_size)
+        # Split bias into Q, K, V
+        b_q, b_k, b_v = module.c_attn.bias.data.chunk(3, dim=0)  # (3 * embed_dim,)
+
+        b_q = b_q.view(num_heads, head_size)  # (num_heads, head_size)
         b_k = b_k.view(num_heads, head_size)
         b_v = b_v.view(num_heads, head_size)
-        pruned_b_q = b_q[pruned_heads].sum(dim=0)
-        pruned_b_k = b_k[pruned_heads].sum(dim=0)
-        pruned_b_v = b_v[pruned_heads].sum(dim=0)
-        pruned_bias_sum = torch.cat([pruned_b_q.repeat(num_heads-len(pruned_heads)),
-                                     pruned_b_k.repeat(num_heads-len(pruned_heads)),
-                                     pruned_b_v.repeat(num_heads-len(pruned_heads))])
+
+        # Sum over pruned heads
+        pruned_b_q = b_q[pruned_heads, :].sum(dim=0)  # (head_size,)
+        pruned_b_k = b_k[pruned_heads, :].sum(dim=0)
+        pruned_b_v = b_v[pruned_heads, :].sum(dim=0)
+
+        # ✅ Correctly repeat pruned bias across remaining heads
+        pruned_b_q = pruned_b_q.unsqueeze(0).repeat(remaining_heads, 1)  # (remaining_heads, head_size)
+        pruned_b_k = pruned_b_k.unsqueeze(0).repeat(remaining_heads, 1)
+        pruned_b_v = pruned_b_v.unsqueeze(0).repeat(remaining_heads, 1)
+
+        # Flatten and concatenate biases
+        pruned_bias_sum = torch.cat([pruned_b_q.flatten(), pruned_b_k.flatten(), pruned_b_v.flatten()], dim=0)
     else:
         pruned_bias_sum = None
     
@@ -117,10 +139,7 @@ def pruned_attention(attn_layer, top_heads, model_device):
     head_size = attn_layer.head_dim
     split_size = attn_layer.split_size
 
-    def get_full_indices(heads):
-        return torch.cat([torch.arange(h * head_size, (h + 1) * head_size) for h in heads])
-
-    full_indices_keep = get_full_indices(top_heads)
+    full_indices_keep = torch.cat([torch.arange(h * head_size, (h + 1) * head_size) for h in top_heads])
 
     # Calculate the sum of pruned heads for key, query, and value
     pruned_heads = torch.tensor([h for h in range(attn_layer.num_heads) if h not in top_heads], device=model_device)
