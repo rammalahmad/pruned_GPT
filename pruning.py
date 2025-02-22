@@ -69,122 +69,7 @@ def prune_heads(model, new_num_heads:int) -> None:
             assert (module.split_size // module.num_heads) * new_num_heads == len(full_indices_keep), "Invalid split size"
             module.split_size = len(full_indices_keep)
             module.num_heads = new_num_heads
-            
 
-
-class CausalSelfAttention(nn.Module):
-
-    def __init__(self, config):
-        super().__init__()
-        assert config.n_embd % config.n_head == 0
-        # key, query, value projections for all heads, but in a batch
-        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
-        # output projection
-        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
-        # regularization
-        self.attn_dropout = nn.Dropout(config.dropout)
-        self.resid_dropout = nn.Dropout(config.dropout)
-        self.n_head = config.n_head
-        self.n_embd = config.n_embd
-        self.dropout = config.dropout
-        # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
-        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
-        if not self.flash:
-            print("WARNING: using slow attention. Flash Attention requires PyTorch >= 2.0")
-            # causal mask to ensure that attention is only applied to the left in the input sequence
-            self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
-                                        .view(1, 1, config.block_size, config.block_size))
-
-    def forward(self, x):
-        B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
-
-        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)
-        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-
-
-        # manual implementation of attention
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
-        att = F.softmax(att, dim=-1)
-        att = self.attn_dropout(att)
-        y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
-        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
-
-        # output projection
-        y = self.resid_dropout(self.c_proj(y))
-        return y
-
-
-def prune_heads(model, n: list[int] | float) -> None:
-    # goal: trim the attention heads' layer weights using the same approach as the `prune_neurons`
-
-    for module in model.modules():
-        if isinstance(module, GPT2Block):
-            # now the multi-head attention
-            for head in module.sa.heads:
-                # key,value,query weight shape: (head_size, n_embd) # n_embd
-                k, v, q = head.key, head.value, head.query
-
-                key_importances = head.key.calculated_importance
-                value_importances = head.value.calculated_importance
-                query_importances = head.query.calculated_importance
-
-                if constraints is None:
-                    constraints = pruning_n_handler(
-                        n, key_importances.size(0), model.n_blocks
-                    )
-
-                num_neurons = constraints[c]  # type: ignore
-
-                k_idx = key_importances.argsort(descending=True)[:num_neurons]
-                v_idx = value_importances.argsort(descending=True)[:num_neurons]
-                q_idx = query_importances.argsort(descending=True)[:num_neurons]
-
-                head.key = nn.Linear(k.in_features, num_neurons, bias=False).to(
-                    model.device
-                )
-                head.value = nn.Linear(v.in_features, num_neurons, bias=False).to(
-                    model.device
-                )
-                head.query = nn.Linear(q.in_features, num_neurons, bias=False).to(
-                    model.device
-                )
-
-                head.key.weight.data = k.weight.data[
-                    k_idx, :
-                ]  # (head_size, num_dense_embd)
-                head.value.weight.data = v.weight.data[
-                    v_idx, :
-                ]  # (head_size, num_dense_embd)
-                head.query.weight.data = q.weight.data[
-                    q_idx, :
-                ]  # (head_size, num_dense_embd)
-
-                head.key.calculated_importance = key_importances[k_idx]
-                head.value.calculated_importance = value_importances[v_idx]
-                head.query.calculated_importance = query_importances[q_idx]
-
-                # TODO: only the weights in the embedding layers are prunned (1st strategy)
-                # TODO: need to follow the correct implementation from the paper (pruning every linear layer?)
-            proj = module.sa.proj
-            proj_importances = module.sa.proj.calculated_importance
-
-            num_neurons = constraints[c] * model.n_head  # type: ignore
-
-            idx = proj_importances.argsort(descending=True)[:num_neurons]
-
-            module.sa.proj = nn.Linear(num_neurons, proj.out_features).to(model.device)
-
-            module.sa.proj.weight.data = proj.weight.data[:, idx]
-            module.sa.proj.bias.data = proj.bias.data
-
-            module.sa.proj.calculated_importance = proj_importances[idx]
-
-            c += 1
-            
             
 def prune_embeddings(model, ratio=0.2) -> None:
     # goal: trim the embedding dimension of the weight matrices in MLP, MHA, and LayerNorm layers.
@@ -291,6 +176,52 @@ def prune_embeddings(model, ratio=0.2) -> None:
     ]  # weight.shape = (vocab_size, embd)
     model.ln_head.bias.data = ln_head.bias.data
 
+
+
+class CausalSelfAttention(nn.Module):
+
+    def __init__(self, config):
+        super().__init__()
+        assert config.n_embd % config.n_head == 0
+        # key, query, value projections for all heads, but in a batch
+        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
+        # output projection
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        # regularization
+        self.attn_dropout = nn.Dropout(config.dropout)
+        self.resid_dropout = nn.Dropout(config.dropout)
+        self.n_head = config.n_head
+        self.n_embd = config.n_embd
+        self.dropout = config.dropout
+        # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
+        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+        if not self.flash:
+            print("WARNING: using slow attention. Flash Attention requires PyTorch >= 2.0")
+            # causal mask to ensure that attention is only applied to the left in the input sequence
+            self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+                                        .view(1, 1, config.block_size, config.block_size))
+
+    def forward(self, x):
+        B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
+
+        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
+        q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+
+
+        # manual implementation of attention
+        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+        att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
+        att = F.softmax(att, dim=-1)
+        att = self.attn_dropout(att)
+        y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
+
+        # output projection
+        y = self.resid_dropout(self.c_proj(y))
+        return y
 
 
 AVAILABLE_PRUNING_STRATEGIES = {
