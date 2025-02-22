@@ -16,31 +16,41 @@ def model_size(model):
 
     print(f"Corrected Total Parameters: {num_params:,}")
     
-def pruned_layer(layer: nn.Module, idx, device, dim=0) -> None:
+def pruned_layer(layer: nn.Module, idx, device, dim=0) -> nn.Linear:
     num_neurons = idx.size(0)
     in_features, out_features = layer.weight.data.size()
+    
+    # Ensure dtype consistency
+    dtype = layer.weight.dtype  
+
     if dim == 0:
-        new_layer = nn.Linear(num_neurons, out_features , bias=layer.bias is not None).to(device)
-        new_layer.weight.data = layer.weight.data[idx, :].clone()
+        new_layer = nn.Linear(num_neurons, out_features, bias=layer.bias is not None).to(device, dtype=dtype)
+        new_layer.weight.data = layer.weight.data[idx, :].clone().to(dtype)
     elif dim == 1:
-        new_layer = nn.Linear(in_features, num_neurons, bias=layer.bias is not None).to(device)
-        new_layer.weight.data = layer.weight.data[:, idx].clone()
+        new_layer = nn.Linear(in_features, num_neurons, bias=layer.bias is not None).to(device, dtype=dtype)
+        new_layer.weight.data = layer.weight.data[:, idx].clone().to(dtype)
         if layer.bias is not None:
-            new_layer.bias.data = layer.bias.data[idx].clone()
+            new_layer.bias.data = layer.bias.data[idx].clone().to(dtype)
     else:
         raise ValueError("Invalid dimension")
+
     return new_layer
+
 
 def pruned_layernorm(layer: LayerNorm, idx, device) -> LayerNorm:
     num_neurons = idx.size(0)
-    new_layer = LayerNorm(num_neurons, eps=layer.eps, elementwise_affine=layer.elementwise_affine).to(device)
+    
+    # Ensure dtype consistency
+    dtype = layer.weight.dtype if layer.elementwise_affine else torch.float32  # Default to float32 if no affine transformation
+    new_layer = LayerNorm(num_neurons, eps=layer.eps, elementwise_affine=layer.elementwise_affine).to(device, dtype=dtype)
 
     # Copy weights and bias if affine transformation is used
     if layer.elementwise_affine:
-        new_layer.weight.data = layer.weight.data[idx].clone()
-        new_layer.bias.data = layer.bias.data[idx].clone()
+        new_layer.weight.data = layer.weight.data[idx].clone().to(dtype)
+        new_layer.bias.data = layer.bias.data[idx].clone().to(dtype)
 
     return new_layer
+
 
 def pruned_embedding(layer: nn.Embedding, idx, device, dim=0) -> nn.Embedding:
     """
@@ -55,18 +65,23 @@ def pruned_embedding(layer: nn.Embedding, idx, device, dim=0) -> nn.Embedding:
     Returns:
         nn.Embedding: The pruned embedding layer.
     """
-    if dim == 0:
+    dtype = layer.weight.dtype  # Ensure dtype consistency
+    
+    if dim == 0:  # Prune vocabulary (keep selected token indices)
         num_embeddings = idx.size(0)
-        new_layer = nn.Embedding(num_embeddings, layer.embedding_dim, padding_idx=layer.padding_idx).to(device)
-        new_layer.weight.data = layer.weight.data[idx, :].clone()
-    elif dim == 1:
+        new_layer = nn.Embedding(num_embeddings, layer.embedding_dim, padding_idx=layer.padding_idx).to(device, dtype=dtype)
+        new_layer.weight.data = layer.weight.data[idx, :].clone().to(dtype)
+
+    elif dim == 1:  # Prune feature dimension (reduce embedding size)
         embedding_dim = idx.size(0)
-        new_layer = nn.Embedding(layer.num_embeddings, embedding_dim, padding_idx=layer.padding_idx).to(device)
-        new_layer.weight.data = layer.weight.data[:, idx].clone()
+        new_layer = nn.Embedding(layer.num_embeddings, embedding_dim, padding_idx=layer.padding_idx).to(device, dtype=dtype)
+        new_layer.weight.data = layer.weight.data[:, idx].clone().to(dtype)
+
     else:
         raise ValueError("Invalid dimension for pruning Embedding layer")
 
     return new_layer
+
   
     
 def compute_pruned_sums(module, pruned_heads: torch.Tensor) -> torch.Tensor:
