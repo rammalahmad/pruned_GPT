@@ -70,7 +70,14 @@ def prune_heads(model, new_num_heads:int) -> None:
             module.split_size = len(full_indices_keep)
             module.num_heads = new_num_heads
 
+def prune_embeddings(model, new_embed_dim:int) -> None:
+    model_blocks = list(model.transformer.h)
+    for i, module in enumerate(model_blocks):
+        importances_ln1 = module.ln1.importance_scores
+        importances_ln2 = module.ln2.importance_scores
+        if i == 0:
             
+
 def prune_embeddings(model, ratio=0.2) -> None:
     # goal: trim the embedding dimension of the weight matrices in MLP, MHA, and LayerNorm layers.
     importances = model.blocks[0].ln1.calculated_importance
