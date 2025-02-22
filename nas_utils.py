@@ -4,6 +4,8 @@ from hooks import *
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 import copy  # For deep copying the model
+import json
+
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -20,35 +22,30 @@ def find_acceptable_model_sizes():
     """Finds all acceptable model sizes within the specified parameter range."""
 
     acceptable_params = []
+    
+    # Load model and tokenizer and do a forward pass
+    model_name = "openai-community/gpt2-medium"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    base_model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype=torch.float16,
+        device_map="auto"
+    )
+    register_all_forward_hooks(base_model)
+    
+    prompt = "The future is AI"
+    inputs = tokenizer(prompt, return_tensors="pt").to(device)
+
+    with torch.no_grad():
+        outputs = base_model(**inputs)
+    compute_importance_scores(base_model)
+
 
     # Iterate over all pruning configurations
     for num_heads in num_heads_options:
         for hidden_size in hidden_size_options:
             for embed_size in embed_size_options:
-                
-                model_name = "openai-community/gpt2-medium"
-
-                # Load model and tokenizer ONCE
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
-                model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float16,  # Force float16 instead of BF16
-                    device_map="auto"           # Auto-detect the best device
-                )
-                register_all_forward_hooks(model)
-
-                batch_size = 16
-                total_samples = 1024
-                num_batches = total_samples // batch_size
-
-                prompt = "The future of AI is"
-                inputs = tokenizer(prompt, return_tensors="pt").to(device)
-
-                with torch.no_grad():
-                    for _ in range(num_batches):
-                        outputs = model(**inputs)
-                
-                compute_importance_scores(model)
+                model = copy.deepcopy(base_model)
 
                 # Apply pruning
                 prune_heads(model, num_heads)
@@ -59,7 +56,11 @@ def find_acceptable_model_sizes():
                 model_size = sum(p.numel() for p in model.parameters())
 
                 if param_range[0] <= model_size <= param_range[1]:
-                    acceptable_params.append((num_heads, hidden_size, embed_size, model_size))
+                    acceptable_params.append({"num_heads": num_heads, "hidden_size": hidden_size, "embed_size": embed_size, "model_size": model_size})
+    if acceptable_params:
+        with open("pruning_params.json", "w") as f:
+            json.dump(acceptable_params, f, indent=4)
+
 
     return acceptable_params
 
