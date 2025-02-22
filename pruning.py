@@ -1,5 +1,6 @@
 import torch.nn as nn
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Attention, GPT2MLP
+from torch.nn.modules.normalization import LayerNorm
 import torch
 from .utils import compute_pruned_sums
 
@@ -30,6 +31,18 @@ def pruned_layer(layer: nn.Module, idx, device, dim=0) -> None:
     else:
         raise ValueError("Invalid dimension")
     return new_layer
+
+def pruned_layernorm(layer: LayerNorm, idx, device) -> LayerNorm:
+    num_neurons = idx.size(0)
+    new_layer = LayerNorm(num_neurons, eps=layer.eps, elementwise_affine=layer.elementwise_affine).to(device)
+
+    # Copy weights and bias if affine transformation is used
+    if layer.elementwise_affine:
+        new_layer.weight.data = layer.weight.data[idx].clone()
+        new_layer.bias.data = layer.bias.data[idx].clone()
+
+    return new_layer
+
 
 def prune_heads(model, new_num_heads:int) -> None:
     for module in model.modules():
@@ -76,6 +89,8 @@ def prune_embeddings(model, new_embed_dim:int) -> None:
         assert new_embed_dim <= module.ln1.in_features, "New embedding dimension is greater than the current embedding dimension"
         idx_ln1 = module.ln1.importance_scores.argsort(descending=True)[:new_embed_dim]
         idx_ln2 = module.ln2.importance_scores.argsort(descending=True)[:new_embed_dim]
+        module.ln1 = pruned_layernorm(module.ln1, idx_ln1, model.device)
+        module.ln2 = pruned_layernorm(module.ln2, idx_ln2, model.device)
         if i == 0:
             embedding_first_save = idx_ln1.clone() # save it to modify embedding layer later
         if i>0:
@@ -84,18 +99,11 @@ def prune_embeddings(model, new_embed_dim:int) -> None:
         module.attn.c_proj = pruned_layer(module.attn.c_proj, idx_ln2, model.device, dim=1)
         module.mlp.c_fc = pruned_layer(module.mlp.c_fc, idx_ln2, model.device, dim=0)
         
-    lnf = model.ln_f
-    ln_head = model.ln_head
+    idx_lnf = model.ln_f.importance_scores.argsort(descending=True)[:new_embed_dim]
+    model.ln_f = pruned_layernorm(model.ln_f, idx_lnf, model.device)
+    model_blocks[-1].mlp.c_proj = pruned_layer(module.mlp.c_proj, idx_lnf, model.device, dim=1)
+    model.lm_head = pruned_layer(model.lm_head, idx_lnf, model.device, dim=0)
 
-    model.ln_f = nn.LayerNorm(num_dense_embd).to(model.device)
-    model.ln_head = nn.Linear(num_dense_embd, ln_head.out_features).to(model.device)
-
-    model.ln_f.weight.data = lnf.weight.data[idx]
-    model.ln_f.bias.data = lnf.bias.data[idx]
-    model.ln_head.weight.data = ln_head.weight.data[
-        :, idx
-    ]  # weight.shape = (vocab_size, embd)
-    model.ln_head.bias.data = ln_head.bias.data
             
 
 def prune_embeddings(model, ratio=0.2) -> None:
