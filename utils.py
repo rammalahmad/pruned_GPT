@@ -25,10 +25,10 @@ def pruned_layer(layer: nn.Module, idx, device, dim=0) -> nn.Linear:
 
     if dim == 0:
         new_layer = nn.Linear(num_neurons, out_features, bias=layer.bias is not None).to(device, dtype=dtype)
-        new_layer.weight.data = layer.weight.data[idx, :].clone().to(dtype)
+        new_layer.weight.data = layer.weight.data[idx, :].clone().to(dtype).T
     elif dim == 1:
         new_layer = nn.Linear(in_features, num_neurons, bias=layer.bias is not None).to(device, dtype=dtype)
-        new_layer.weight.data = layer.weight.data[:, idx].clone().to(dtype)
+        new_layer.weight.data = layer.weight.data[:, idx].clone().to(dtype).T
         if layer.bias is not None:
             new_layer.bias.data = layer.bias.data[idx].clone().to(dtype)
     else:

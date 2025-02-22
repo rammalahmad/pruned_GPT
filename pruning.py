@@ -55,11 +55,11 @@ def prune_embeddings(model, new_embed_dim:int) -> None:
     idx_lnf = model.transformer.ln_f.importance_scores.argsort(descending=True)[:new_embed_dim]
     model.transformer.ln_f = pruned_layernorm(model.transformer.ln_f, idx_lnf, model.device)
     model_blocks[-1].mlp.c_proj = pruned_layer(module.mlp.c_proj, idx_lnf, model.device, dim=1)
+    model.transformer.wte = pruned_embedding(model.transformer.wte, idx_first_save, model.device, dim=1)
+    model.transformer.wpe = pruned_embedding(model.transformer.wpe, idx_first_save, model.device, dim=1)
     # model.lm_head = pruned_layer(model.lm_head, idx_lnf, model.device, dim=0) # we don't prune the model head since it's tied to the input embeddings
     model.lm_head = nn.Linear(new_embed_dim, model.lm_head.out_features, bias=False)
     model.tie_weights() # tie the weights of the input embeddings and the output projection layer
-    model.transformer.wte = pruned_embedding(model.transformer.wte, idx_first_save, model.device, dim=1)
-    model.transformer.wpe = pruned_embedding(model.transformer.wpe, idx_first_save, model.device, dim=1)
 
 
 AVAILABLE_PRUNING_STRATEGIES = {
