@@ -99,7 +99,7 @@ def find_acceptable_model_sizes(base_model, tokenizer, num_heads_options, hidden
                 model = copy.deepcopy(base_model)
 
                 # Apply pruning
-                prune_model(model, num_heads, int(hidden_size*embed_size), embed_size)
+                prune_model(model, int(hidden_size*embed_size), num_heads, embed_size)
 
                 # Calculate model size
                 model_size = sum(p.numel() for p in model.parameters())
