@@ -16,7 +16,7 @@ def load_model(model_name, device='auto'):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
         device_map=device
     )
     tokenizer.pad_token = tokenizer.eos_token
@@ -35,7 +35,7 @@ def trainer_gpt2(model, tokenizer, dataset, output_dir=None,  num_epochs=3, batc
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         eval_strategy="steps",
-        eval_steps=10,
+        eval_steps=20,
         logging_steps=5,
         gradient_accumulation_steps=16,
         num_train_epochs=num_epochs,
@@ -45,7 +45,8 @@ def trainer_gpt2(model, tokenizer, dataset, output_dir=None,  num_epochs=3, batc
         learning_rate=lr,
         save_steps=0,
         save_total_limit=0,
-        fp16=True,
+        bf16=True,
+        fp16=False,
         seed = 3407,
         report_to="none"
     )
