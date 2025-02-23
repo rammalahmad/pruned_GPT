@@ -3,10 +3,13 @@ from hooks import *
 import torch
 import copy  # For deep copying the model
 import json
+import math
+from datasets import load_dataset
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer, DataCollatorForLanguageModeling
+from torch.utils.data import DataLoader
 
 def load_model(model_name, device='auto'):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -15,6 +18,8 @@ def load_model(model_name, device='auto'):
         torch_dtype=torch.float16,
         device_map=device
     )
+    tokenizer.pad_token = tokenizer.eos_token
+    assert tokenizer.padding_side == "right" 
     return model, tokenizer
 
 def trainer_gpt2(model, tokenizer, dataset, output_dir=None,  num_epochs=3, batch_size=4, lr=5e-4):
@@ -22,7 +27,6 @@ def trainer_gpt2(model, tokenizer, dataset, output_dir=None,  num_epochs=3, batc
     HF Trainer for GPT-2 model on the given dataset and returns a dictionary of training & validation losses.
     """
     model.train()
-    tokenizer.pad_token = tokenizer.eos_token
     data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
     args = TrainingArguments(
@@ -109,8 +113,18 @@ def find_acceptable_model_sizes(base_model, tokenizer, num_heads_options, hidden
     return acceptable_params
 
 
-def calibration_pass(model, calib_data):
+def calibration_pass(model, dataset, tokenizer, sample_size=512, batch_size=16):
     """Performs a calibration pass on the model."""
+    data = dataset["train"]
+    sampled_data = data.shuffle(seed=42).select(range(sample_size))
+    def tokenize_fn(examples):
+        return tokenizer(examples["text"], truncation=True, max_length=1024, padding="max_length")
+    
+    tokenized_calib_data = sampled_data.map(tokenize_fn, batched=True, remove_columns=["text"])
+    tokenized_calib_data.set_format(type="torch", columns=["input_ids", "attention_mask"])
+
+    calib_data = DataLoader(tokenized_calib_data, batch_size=batch_size)
+    
     model.eval()
     register_all_forward_hooks(model)
     with torch.no_grad():
@@ -120,6 +134,39 @@ def calibration_pass(model, calib_data):
             outputs = model(inputs, attention_mask=attention_mask)
     compute_importance_scores(model)
     
+    
+def evaluate_perplexity(model, tokenizer, batch_size=8, device=device):
+    """
+    Evaluates a GPT-2 model's perplexity on the Wikitext-2 dataset.
+    """
+    dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
+
+    def tokenize_function(examples):
+        return tokenizer(examples["text"], truncation=True, max_length=1024, padding="max_length")
+    
+    tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
+    tokenized_dataset.set_format(type="torch", columns=["input_ids"])
+    
+    dataloader = DataLoader(tokenized_dataset, batch_size=batch_size)
+
+    model.eval()
+    total_loss = 0
+    total_tokens = 0
+
+    with torch.no_grad():
+        for batch in dataloader:
+            inputs = batch["input_ids"].to(device)
+            outputs = model(inputs, labels=inputs)
+            loss = outputs.loss
+            total_loss += loss.item() * inputs.shape[0]
+            total_tokens += inputs.numel()
+
+    avg_loss = total_loss / total_tokens
+    perplexity = math.exp(avg_loss)
+
+    print(f"Perplexity on Wikitext-2: {perplexity:.2f}")
+    return perplexity
+
 
 if __name__ == "__main__":
     
@@ -135,4 +182,3 @@ if __name__ == "__main__":
     acceptable_params = find_acceptable_model_sizes(base_model, tokenizer, num_heads_options, hidden_size_options, embed_size_options, param_range)
     print(acceptable_params)
     print(len(acceptable_params))
-    
