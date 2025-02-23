@@ -1,4 +1,4 @@
-from pruning import prune_heads, prune_mlp, prune_embeddings
+from pruning import prune_model
 from hooks import *
 import torch
 import copy  # For deep copying the model
@@ -98,9 +98,7 @@ def find_acceptable_model_sizes(base_model, tokenizer, num_heads_options, hidden
                 model = copy.deepcopy(base_model)
 
                 # Apply pruning
-                prune_heads(model, num_heads)
-                prune_mlp(model, int(hidden_size*embed_size))
-                prune_embeddings(model, embed_size)
+                prune_model(model, num_heads, int(hidden_size*embed_size), embed_size)
 
                 # Calculate model size
                 model_size = sum(p.numel() for p in model.parameters())
