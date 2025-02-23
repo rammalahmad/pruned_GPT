@@ -178,19 +178,3 @@ def evaluate_perplexity(model, tokenizer, stride = 1024):
 
     print(f"Perplexity on Wikitext-2: {ppl:.2f}")
     return ppl
-
-
-if __name__ == "__main__":
-    
-    num_heads_options = [8, 10, 12]
-    hidden_size_options = [2.5, 3, 3.5, 4]
-    embed_size_options = [512, 640, 768]
-
-    param_range = (115_000_000, 135_000_000)
-
-    model_name = "openai-community/gpt2-medium"
-    base_model, tokenizer = load_model(model_name)
-    print(evaluate_perplexity(base_model, tokenizer, stride=1024))
-    # acceptable_params = find_acceptable_model_sizes(base_model, tokenizer, num_heads_options, hidden_size_options, embed_size_options, param_range)
-    # print(acceptable_params)
-    # print(len(acceptable_params))
