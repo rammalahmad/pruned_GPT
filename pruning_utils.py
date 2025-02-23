@@ -57,6 +57,9 @@ def pruned_layer(layer: nn.Module, idx, device, dim=0) -> nn.Module:
     # Preserve importance_scores if they exist
     if hasattr(layer, "importance_scores"):
         new_layer.importance_scores = layer.importance_scores.clone()
+    new_layer.weight.requires_grad = True
+    if new_layer.bias is not None:
+        new_layer.bias.requires_grad = True
 
     return new_layer
 
@@ -74,6 +77,10 @@ def pruned_layernorm(layer: LayerNorm, idx, device) -> LayerNorm:
         new_layer.bias.data = layer.bias.data[idx].to(dtype)
     if hasattr(layer, "importance_scores"):
         new_layer.importance_scores = layer.importance_scores
+    new_layer.weight.requires_grad = True
+    if new_layer.bias is not None:
+        new_layer.bias.requires_grad = True
+
     return new_layer
 
 
@@ -104,6 +111,8 @@ def pruned_embedding(layer: nn.Embedding, idx, device, dim=0) -> nn.Embedding:
 
     else:
         raise ValueError("Invalid dimension for pruning Embedding layer")
+    
+    new_layer.weight.requires_grad = True
 
     return new_layer
 
@@ -196,8 +205,10 @@ def pruned_attention(attn_layer, top_heads, model_device):
     pruned_attn_layer = pruned_layer(attn_layer.c_attn, index_attn, model_device, dim=1)
     attn_layer.c_attn = Conv1D(pruned_sum.shape[1], pruned_sum.shape[0]).to(model_device, dtype=attn_layer.c_attn.weight.dtype)
     attn_layer.c_attn.weight.data = pruned_sum - (len(pruned_heads) - 1) * pruned_attn_layer.weight.data
+    attn_layer.c_attn.weight.requires_grad = True
     if attn_layer.c_attn.bias is not None:
         attn_layer.c_attn.bias.data = pruned_bias_sum - (len(pruned_heads) - 1) * pruned_attn_layer.bias.data
+        attn_layer.c_attn.bias.requires_grad = True
     attn_layer.c_proj = pruned_layer(attn_layer.c_proj, full_indices_keep, model_device, dim=0)
 
     # Update the split size and number of heads
