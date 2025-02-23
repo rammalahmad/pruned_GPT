@@ -1,23 +1,5 @@
 [
     {
-        "num_heads": 6,
-        "hidden_size": 1536,
-        "embed_size": 768,
-        "model_size": 124495104
-    },
-    {
-        "num_heads": 6,
-        "hidden_size": 2048,
-        "embed_size": 640,
-        "model_size": 119497600
-    },
-    {
-        "num_heads": 6,
-        "hidden_size": 3072,
-        "embed_size": 512,
-        "model_size": 120803840
-    },
-    {
         "num_heads": 8,
         "hidden_size": 1536,
         "embed_size": 768,

@@ -6,22 +6,18 @@ import torch
 import copy  # For deep copying the model
 import json
 
-
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-# Load OpenWebText dataset from Hugging Face
-# dataset = load_dataset("openwebtext")
-
-num_heads_options = [6, 8, 10, 12]
-hidden_size_options = [1536, 2048, 2560, 3072]
-embed_size_options = [512, 640, 768]
-
-param_range = (115_000_000, 135_000_000)
 
 def find_acceptable_model_sizes():
     """Finds all acceptable model sizes within the specified parameter range."""
 
     acceptable_params = []
+    
+    num_heads_options = [8, 10, 12]
+    hidden_size_options = [1536, 2048, 2560, 3072]
+    embed_size_options = [512, 640, 768]
+
+    param_range = (115_000_000, 135_000_000)
     
     # Load model and tokenizer and do a forward pass
     model_name = "openai-community/gpt2-medium"
