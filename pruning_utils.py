@@ -176,7 +176,7 @@ def compute_pruned_sums(module, pruned_heads: torch.Tensor) -> torch.Tensor:
     return pruned_sum, pruned_bias_sum
 
 
-def pruned_attention(attn_layer, top_heads, model_device):
+def pruned_attention(attn_layer, top_heads, model_device, residual_error=False):
     """
     Prune an attention layer by keeping only the top_heads.
     
@@ -192,17 +192,22 @@ def pruned_attention(attn_layer, top_heads, model_device):
     split_size = attn_layer.split_size
 
     full_indices_keep = torch.cat([torch.arange(h * head_size, (h + 1) * head_size) for h in top_heads])
-
-    # Calculate the sum of pruned heads for key, query, and value
-    pruned_heads = torch.tensor([h for h in range(attn_layer.num_heads) if h not in top_heads], device=model_device)
-    pruned_sum, pruned_bias_sum = compute_pruned_sums(attn_layer, pruned_heads)
-
     # Adjust indices for QKV weights
     index_attn = torch.cat([
         full_indices_keep,
         full_indices_keep + split_size,  # Key
         full_indices_keep + 2 * split_size  # Value
     ])
+
+    # Calculate the sum of pruned heads for key, query, and value
+    pruned_heads = torch.tensor([h for h in range(attn_layer.num_heads) if h not in top_heads], device=model_device)
+    if len(pruned_heads) == 0 or not residual_error:
+        attn_layer.c_attn = pruned_layer(attn_layer.c_attn, index_attn, model_device, dim=1)
+        attn_layer.c_proj = pruned_layer(attn_layer.c_proj, full_indices_keep, model_device, dim=0)
+        attn_layer.split_size = len(full_indices_keep)
+        attn_layer.num_heads = len(top_heads)
+        return attn_layer
+    pruned_sum, pruned_bias_sum = compute_pruned_sums(attn_layer, pruned_heads)
 
     # Apply pruning
     pruned_attn_layer = pruned_layer(attn_layer.c_attn, index_attn, model_device, dim=1)
