@@ -51,7 +51,7 @@ def prune_embeddings(model, new_embed_dim:int) -> None:
         if i == 0:
             idx_first_save = idx_ln1.clone() # save it to modify embedding layer later
         if i>0:
-            model_blocks[i-1].mlp.c_proj = pruned_layer(module.mlp.c_proj, idx_ln1, model.device, dim=1)
+            model_blocks[i-1].mlp.c_proj = pruned_layer(model_blocks[i-1].mlp.c_proj, idx_ln1, model.device, dim=1)
         module.attn.c_attn = pruned_layer(module.attn.c_attn, idx_ln1, model.device, dim=0)
         module.attn.c_proj = pruned_layer(module.attn.c_proj, idx_ln2, model.device, dim=1)
         module.mlp.c_fc = pruned_layer(module.mlp.c_fc, idx_ln2, model.device, dim=0)
