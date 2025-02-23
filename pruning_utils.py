@@ -71,7 +71,9 @@ def pruned_layernorm(layer: LayerNorm, idx, device) -> LayerNorm:
     num_neurons = idx.size(0)
     
     # Ensure dtype consistency
-    dtype = layer.weight.dtype if layer.elementwise_affine else torch.float32  # Default to float32 if no affine transformation
+    dtype = getattr(layer.weight, "dtype", torch.float32)
+
+    # dtype = layer.weight.dtype if layer.elementwise_affine else torch.float32  # Default to float32 if no affine transformation
     new_layer = LayerNorm(num_neurons, eps=layer.eps, elementwise_affine=layer.elementwise_affine).to(device, dtype=dtype)
 
     # Copy weights and bias if affine transformation is used
@@ -207,6 +209,7 @@ def pruned_attention(attn_layer, top_heads, model_device, residual_error=False):
         attn_layer.split_size = len(full_indices_keep)
         attn_layer.num_heads = len(top_heads)
         return attn_layer
+    # FIXME: fix residual_error since the loss is too high for some reason when we add the residuals
     pruned_sum, pruned_bias_sum = compute_pruned_sums(attn_layer, pruned_heads)
 
     # Apply pruning
