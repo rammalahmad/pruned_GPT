@@ -1,86 +1,75 @@
 from pruning import prune_heads, prune_mlp, prune_embeddings
-from datasets import load_dataset
 from hooks import *
-from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 import copy  # For deep copying the model
 import json
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer, DataCollatorForLanguageModeling
 
+def load_model(model_name, device='auto'):
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype=torch.float16,
+        device_map=device
+    )
+    return model, tokenizer
 
-from transformers import AutoModelForCausalLM, TrainingArguments, Trainer, DataCollatorForLanguageModeling
-from datasets import Dataset
-import torch
-
-def train_gpt2(dataset, model_checkpoint="gpt2", output_dir="./results", num_epochs=3, batch_size=4, lr=5e-5):
+def trainer_gpt2(model, tokenizer, dataset, output_dir=None,  num_epochs=3, batch_size=4, lr=5e-4):
     """
-    Trains a GPT-2 model on the given dataset and returns a dictionary of training & validation losses.
+    HF Trainer for GPT-2 model on the given dataset and returns a dictionary of training & validation losses.
     """
-    
-    tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
-    tokenizer.pad_token = tokenizer.eos_token  # GPT-2 does not have a padding token by default
-    assert tokenizer.padding_side == "right", "The GPT-2 tokenizer must have right padding"
+    model.train()
+    tokenizer.pad_token = tokenizer.eos_token
+    data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
+
+    args = TrainingArguments(
+        output_dir=output_dir, #"test",
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size,
+        eval_strategy="steps",
+        eval_steps=10,
+        logging_steps=5,
+        gradient_accumulation_steps=16,
+        num_train_epochs=num_epochs,
+        weight_decay=0.1,
+        warmup_steps=5,
+        lr_scheduler_type="cosine",
+        learning_rate=lr,
+        save_steps=0,
+        save_total_limit=0,
+        fp16=True,
+        seed = 3407,
+        report_to="none"
+    )
+
+    trainer = Trainer(
+        model=model,
+        args=args,
+        data_collator=data_collator,
+        train_dataset=dataset["train"],
+        eval_dataset=dataset["test"],
+    )
+
+    return trainer
+
+
+def tokenize_dataset(tokenizer, dataset):
+    """Tokenizes the dataset using the tokenizer."""
+    dataset = dataset["train"].train_test_split(test_size=0.1, seed=42)
+
     def tokenize_function(examples):
-        return tokenizer(
+        return {"input_ids": tokenizer(
             examples["text"],
             truncation=True,
             max_length=1024
-        )
+        )["input_ids"]}
 
-    # Tokenize dataset
-    tokenized_datasets = dataset.map(tokenize_function, batched=False, remove_columns=["text"])
-    tokenized_datasets.set_format(type="torch", columns=["input_ids", "attention_mask"])
-
-    # Load GPT-2 model
-    model = AutoModelForCausalLM.from_pretrained(model_checkpoint)
-    model.config.pad_token_id = tokenizer.pad_token_id  # Ensure pad token is set
-
-    # Define data collator for padding
-    data_collator = DataCollatorForLanguageModeling(
-        tokenizer=tokenizer,
-        mlm=False  # GPT-2 does causal LM, not masked LM
-    )
-
-    # Training arguments
-    training_args = TrainingArguments(
-        output_dir=output_dir,
-        evaluation_strategy="steps",
-        eval_steps=500,
-        save_strategy="epoch",
-        per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
-        logging_dir="./logs",
-        logging_steps=10,
-        save_total_limit=2,
-        num_train_epochs=num_epochs,
-        fp16=True,
-        learning_rate=lr,
-        gradient_accumulation_steps=2,
-        report_to="none"  # Disable logging to external services
-    )
-
-    # Trainer setup
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=tokenized_datasets["train"],
-        eval_dataset=tokenized_datasets["validation"],
-        tokenizer=tokenizer,
-        data_collator=data_collator
-    )
-
-    # Train the model and return metrics
-    train_result = trainer.train()
-    metrics = train_result.metrics
-
-    # Evaluate model and get validation loss
-    eval_metrics = trainer.evaluate()
-    metrics["eval_loss"] = eval_metrics["eval_loss"]
-
-    return metrics
-
+    tokenized_datasets = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
+    tokenized_datasets.set_format(type="torch", columns=["input_ids"])
+    return tokenized_datasets
 
 
 def find_acceptable_model_sizes(base_model, tokenizer, num_heads_options, hidden_size_options, embed_size_options, param_range):
@@ -140,14 +129,9 @@ if __name__ == "__main__":
 
     param_range = (115_000_000, 135_000_000)
 
-    # Load model and tokenizer and do a forward pass
     model_name = "openai-community/gpt2-medium"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    base_model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.float16,
-        device_map="auto"
-    )
+    base_model, tokenizer = load_model(model_name)
+
     acceptable_params = find_acceptable_model_sizes(base_model, tokenizer, num_heads_options, hidden_size_options, embed_size_options, param_range)
     print(acceptable_params)
     print(len(acceptable_params))
