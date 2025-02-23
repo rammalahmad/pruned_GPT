@@ -23,7 +23,7 @@ def load_model(model_name, device='auto'):
     assert tokenizer.padding_side == "right" 
     return model, tokenizer
 
-def trainer_gpt2(model, tokenizer, dataset, output_dir=None,  num_epochs=3, batch_size=4, lr=5e-4):
+def trainer_gpt2(model, tokenizer, dataset, output_dir="/tmp/trainer",  num_epochs=3, batch_size=4, lr=5e-4):
     """
     HF Trainer for GPT-2 model on the given dataset and returns a dictionary of training & validation losses.
     """
@@ -35,7 +35,7 @@ def trainer_gpt2(model, tokenizer, dataset, output_dir=None,  num_epochs=3, batc
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         eval_strategy="steps",
-        eval_steps=20,
+        eval_steps=30,
         logging_steps=5,
         gradient_accumulation_steps=16,
         num_train_epochs=num_epochs,
@@ -133,6 +133,7 @@ def calibration_pass(model, tokenizer, dataset, sample_size=512, batch_size=16):
             attention_mask = batch["attention_mask"].to(device)
             outputs = model(inputs, attention_mask=attention_mask)
     compute_importance_scores(model)
+    model.train()
     
     
 def evaluate_perplexity(model, tokenizer, stride = 1024):
