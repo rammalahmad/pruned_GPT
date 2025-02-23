@@ -36,7 +36,7 @@ def prune_heads(model, new_num_heads: int) -> None:
             assert new_num_heads <= module.num_heads, "Number of heads to keep is greater than the current number of heads"
             
             importances = module.c_proj.importance_scores
-            top_heads = importances.argsort(descending=True)[:new_num_heads]
+            top_heads, _ = importances.argsort(descending=True)[:new_num_heads].sort()
 
             module = pruned_attention(module, top_heads, model.device)
 
