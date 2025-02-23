@@ -1,32 +1,20 @@
 [
     {
-        "num_heads": 8,
-        "hidden_size": 3,
-        "embed_size": 640,
-        "model_size": 123435904
-    },
-    {
-        "num_heads": 8,
+        "num_heads": 6,
         "hidden_size": 3.5,
-        "embed_size": 640,
-        "model_size": 133273984
-    },
-    {
-        "num_heads": 10,
-        "hidden_size": 2.5,
-        "embed_size": 640,
-        "model_size": 121471360
+        "embed_size": 1024,
+        "model_size": 266684416
     },
     {
         "num_heads": 10,
         "hidden_size": 3,
-        "embed_size": 640,
-        "model_size": 131309440
+        "embed_size": 1024,
+        "model_size": 266690560
     },
     {
         "num_heads": 12,
         "hidden_size": 2.5,
-        "embed_size": 640,
-        "model_size": 129344896
+        "embed_size": 1024,
+        "model_size": 254104576
     }
 ]
