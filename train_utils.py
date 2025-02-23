@@ -114,7 +114,7 @@ def find_acceptable_model_sizes(base_model, tokenizer, num_heads_options, hidden
     return acceptable_params
 
 
-def calibration_pass(model, dataset, tokenizer, sample_size=512, batch_size=16):
+def calibration_pass(model, tokenizer, dataset, sample_size=512, batch_size=16):
     """Performs a calibration pass on the model."""
     data = dataset["train"]
     sampled_data = data.shuffle(seed=42).select(range(sample_size))
@@ -129,7 +129,7 @@ def calibration_pass(model, dataset, tokenizer, sample_size=512, batch_size=16):
     model.eval()
     register_all_forward_hooks(model)
     with torch.no_grad():
-        for batch in calib_data:
+        for batch in tqdm(calib_data):
             inputs = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             outputs = model(inputs, attention_mask=attention_mask)
