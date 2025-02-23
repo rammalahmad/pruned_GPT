@@ -18,7 +18,7 @@ def prune_mlp(model, hidden_size:int) -> None:
         if isinstance(module, GPT2MLP):
             importances = module.c_fc.importance_scores
             num_neurons = min(hidden_size, module.c_fc.weight.shape[1])
-            idx = importances.argsort(descending=True)[:num_neurons]
+            idx, _ = importances.argsort(descending=True)[:num_neurons].sort()
             module.c_fc = pruned_layer(module.c_fc, idx, model.device, dim=1)
             module.c_proj = pruned_layer(module.c_proj, idx, model.device, dim=0)
 
@@ -44,8 +44,8 @@ def prune_embeddings(model, new_embed_dim:int) -> None:
     model_blocks = list(model.transformer.h)
     for i, module in enumerate(model_blocks):
         assert new_embed_dim <= module.ln_1.normalized_shape[0], "New embedding dimension is greater than the current embedding dimension"
-        idx_ln1 = module.ln_1.importance_scores.argsort(descending=True)[:new_embed_dim]
-        idx_ln2 = module.ln_2.importance_scores.argsort(descending=True)[:new_embed_dim]
+        idx_ln1, _ = module.ln_1.importance_scores.argsort(descending=True)[:new_embed_dim].sort()
+        idx_ln2, _ = module.ln_2.importance_scores.argsort(descending=True)[:new_embed_dim].sort()
         module.ln_1 = pruned_layernorm(module.ln_1, idx_ln1, model.device)
         module.ln_2 = pruned_layernorm(module.ln_2, idx_ln2, model.device)
         if i == 0:
@@ -56,7 +56,7 @@ def prune_embeddings(model, new_embed_dim:int) -> None:
         module.attn.c_proj = pruned_layer(module.attn.c_proj, idx_ln2, model.device, dim=1)
         module.mlp.c_fc = pruned_layer(module.mlp.c_fc, idx_ln2, model.device, dim=0)
         
-    idx_lnf = model.transformer.ln_f.importance_scores.argsort(descending=True)[:new_embed_dim]
+    idx_lnf, _ = model.transformer.ln_f.importance_scores.argsort(descending=True)[:new_embed_dim].sort()
     model.transformer.ln_f = pruned_layernorm(model.transformer.ln_f, idx_lnf, model.device)
     model_blocks[-1].mlp.c_proj = pruned_layer(module.mlp.c_proj, idx_lnf, model.device, dim=1)
     model.transformer.wte = pruned_embedding(model.transformer.wte, idx_first_save, model.device, dim=1)
