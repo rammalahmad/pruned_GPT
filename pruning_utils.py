@@ -39,13 +39,14 @@ def pruned_layer(layer: nn.Module, idx, device, dim=0) -> nn.Module:
         else:  # nn.Linear case
             new_layer = nn.Linear(num_neurons, out_features, bias=layer.bias is not None).to(device, dtype=dtype)
             new_layer.weight.data = layer.weight.data[idx, :].clone().to(dtype).T  # Transpose needed for Linear
+        if layer.bias is not None:
+            new_layer.bias.data = layer.bias.data.clone().to(dtype)
 
     elif dim == 1:  # Prune output dimension
         if is_conv1d:
             new_layer = Conv1D(num_neurons, in_features).to(device, dtype=dtype)
             new_layer.weight.data = layer.weight.data[:, idx].clone().to(dtype)  # No need to transpose
-            if layer.bias is not None:
-                new_layer.bias.data = layer.bias.data.clone().to(dtype)
+
         else:  # nn.Linear case
             new_layer = nn.Linear(in_features, num_neurons, bias=layer.bias is not None).to(device, dtype=dtype)
             new_layer.weight.data = layer.weight.data[:, idx].clone().to(dtype).T  # Transpose needed for Linear
