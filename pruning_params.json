@@ -1,5 +1,11 @@
 [
     {
+        "num_heads": 16,
+        "hidden_size": 4,
+        "embed_size": 768,
+        "model_size": 267421346
+    },
+    {
         "num_heads": 6,
         "hidden_size": 3.5,
         "embed_size": 1024,
