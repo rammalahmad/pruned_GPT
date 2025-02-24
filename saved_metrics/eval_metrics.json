@@ -4,5 +4,6 @@
     "num_heads=12_hidden_size=2.5_embed_size=1024": 49.56602096557617,
     "num_heads=6_hidden_size=3.5_embed_size=1024_before_training": 947.4991455078125,
     "num_heads=10_hidden_size=3_embed_size=1024_before_training": 2694.693359375,
-    "num_heads=12_hidden_size=2.5_embed_size=1024_before_training": 4573.84326171875
+    "num_heads=12_hidden_size=2.5_embed_size=1024_before_training": 4573.84326171875,
+    "untrained_num_heads=12_hidden_size=2.5_embed_size=1024_before_training": 58997.2265625
 }
