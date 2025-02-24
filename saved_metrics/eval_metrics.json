@@ -14,5 +14,7 @@
     "gpt_2_small_untrained": 2586.666259765625,
     "gpt_2_small_untrained_before": 54769.81,
     "depth=16_before_training": 43.56428146362305,
-    "depth=16": 35.080421447753906
+    "depth=16": 35.080421447753906,
+    "depth=20_num_heads=12_mlp_exp=3.5_embed_size=1024_before_training": 85.16101837158203,
+    "depth=20_num_heads=12_mlp_exp=3.5_embed_size=1024": 36.6318473815918
 }
