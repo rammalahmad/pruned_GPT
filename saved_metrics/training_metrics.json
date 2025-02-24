@@ -484,6 +484,14 @@
     ],
     "num_heads=10_hidden_size=3_embed_size=1024": [
         {
+            "eval_loss": 6.738983812,
+            "eval_runtime": 35.9422,
+            "eval_samples_per_second": 27.822,
+            "eval_steps_per_second": 6.956,
+            "epoch": 0.035555555555555556,
+            "step": 5
+        },
+        {
             "loss": 7.009,
             "grad_norm": 9.9375,
             "learning_rate": 0.0002,
