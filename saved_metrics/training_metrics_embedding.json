@@ -1,5 +1,14 @@
 {
-    "num_heads=16_hidden_size=4_embed_size=768": [
+    "num_heads=16_mlp_exp=4_embed_size=768": [
+        {
+            "eval_loss": 8.5372,
+            "eval_model_preparation_time": 0.003,
+            "eval_runtime": 43.7085,
+            "eval_samples_per_second": 22.879,
+            "eval_steps_per_second": 5.72,
+            "epoch": 0.07111111111111111,
+            "step": 5
+        },
         {
             "loss": 8.8439,
             "grad_norm": 1.546875,

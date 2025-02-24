@@ -2,9 +2,11 @@
     "num_heads=6_hidden_size=3.5_embed_size=1024": 58.10775756835938,
     "num_heads=10_hidden_size=3_embed_size=1024": 42.49887466430664,
     "num_heads=12_hidden_size=2.5_embed_size=1024": 41.56602096557617,
+    "num_heads=16_hidden_size=4096_embed_size=768": 1726.46,
     "num_heads=6_hidden_size=3.5_embed_size=1024_before_training": 947.4991455078125,
     "num_heads=10_hidden_size=3_embed_size=1024_before_training": 2694.693359375,
     "num_heads=12_hidden_size=2.5_embed_size=1024_before_training": 4573.84326171875,
     "untrained_num_heads=12_hidden_size=2.5_embed_size=1024_before_training": 58997.2265625,
-    "untrained_num_heads=12_hidden_size=2.5_embed_size=1024": 5257.4375
+    "untrained_num_heads=12_hidden_size=2.5_embed_size=1024": 5257.4375,
+    "num_heads=16_hidden_size=4096_embed_size=768_before_training": 2.4e21
 }
