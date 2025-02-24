@@ -232,7 +232,7 @@ def pruned_attention(attn_layer, top_heads, model_device, residual_error=False):
     return attn_layer
 
 
-def pruned_block(model, tokenizer, num_layers_to_remove):
+def pruned_blocks(model, tokenizer, num_layers_to_remove):
     iteration_ppls = [evaluate_perplexity(model, tokenizer)]
     print(f"Initial PPL: {iteration_ppls[0]:.2f}")
     js = []
@@ -255,3 +255,4 @@ def pruned_block(model, tokenizer, num_layers_to_remove):
         model.transformer.h.pop(j)
         iteration_ppls.append(ppls[j])
         print(f"Removed layer {j}. {len(model.transformer.h)} layers left. PPL: {ppls[j]:.2f}")
+    model.config.n_layer -= num_layers_to_remove

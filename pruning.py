@@ -2,12 +2,15 @@ import torch.nn as nn
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Attention, GPT2MLP
 from torch.nn.modules.normalization import LayerNorm
 import torch
-from pruning_utils import compute_pruned_sums, pruned_layer, pruned_layernorm, pruned_embedding, pruned_attention
+from pruning_utils import *
 
-def prune_model(model, hidden_size, num_heads, embed_size):
+def prune_model_width(model, hidden_size, num_heads, embed_size):
     prune_heads(model, num_heads)
     prune_mlp(model, hidden_size)
     prune_embeddings(model, embed_size)
+    
+def prune_model_depth(model, tokenizer, num_layers_to_remove):
+    pruned_blocks(model, tokenizer, num_layers_to_remove)
 
 def prune_mlp(model, hidden_size:int) -> None:
     # goal: trim the width of the MLP layers in the transformer blocks
