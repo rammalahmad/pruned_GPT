@@ -1,4 +1,4 @@
-from pruning import prune_model
+from pruning import prune_model_width
 from hooks import *
 import torch
 import copy  # For deep copying the model
