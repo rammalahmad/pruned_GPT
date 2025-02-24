@@ -3,7 +3,7 @@ import torch.nn as nn
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Attention, GPT2MLP
 from torch.nn.modules.normalization import LayerNorm
 from transformers.pytorch_utils import Conv1D
-from lw_retrain_utils import evaluate_perplexity
+from evaluation import evaluate_perplexity
 from tqdm.auto import tqdm, trange
 import numpy as np
 
