@@ -6,6 +6,8 @@ from transformers.pytorch_utils import Conv1D
 from evaluation import evaluate_perplexity
 from tqdm.auto import tqdm, trange
 import numpy as np
+import contextlib
+import io
 
 
 def model_size(model):
@@ -236,6 +238,10 @@ def pruned_blocks(model, tokenizer, num_layers_to_remove):
     iteration_ppls = [evaluate_perplexity(model, tokenizer)]
     print(f"Initial PPL: {iteration_ppls[0]:.2f}")
     js = []
+    
+    def silent_evaluate():
+        with contextlib.redirect_stdout(io.StringIO()):  # Redirect prints to a dummy buffer
+            return evaluate_perplexity(model, tokenizer)
 
     for i in trange(num_layers_to_remove, desc="Evaluating iterations...", leave=True):
         ppls = []
@@ -243,7 +249,7 @@ def pruned_blocks(model, tokenizer, num_layers_to_remove):
             layer = model.transformer.h[j]
             model.transformer.h.pop(j)
             try:
-                ppl = evaluate_perplexity(model, tokenizer)
+                ppl = silent_evaluate().item()
             finally:
                 model.transformer.h.insert(j, layer)
             torch.cuda.empty_cache()
@@ -255,4 +261,5 @@ def pruned_blocks(model, tokenizer, num_layers_to_remove):
         model.transformer.h.pop(j)
         iteration_ppls.append(ppls[j])
         print(f"Removed layer {j}. {len(model.transformer.h)} layers left. PPL: {ppls[j]:.2f}")
+        print("New model size: ", sum(t.numel() for t in model.parameters()))
     model.config.n_layer -= num_layers_to_remove
