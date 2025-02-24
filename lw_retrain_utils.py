@@ -140,6 +140,7 @@ def evaluate_perplexity(model, tokenizer, stride = 1024):
     """
     Evaluates a GPT-2 model's perplexity on the Wikitext-2 dataset, ignoring padding tokens.
     """
+    model.eval()
     test = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
     encodings = tokenizer("\n\n".join(test["text"]), return_tensors="pt")
 
