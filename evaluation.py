@@ -8,7 +8,7 @@ test = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
 
 def evaluate_perplexity(model, tokenizer, test=test, stride = 1024):
     """
-    Evaluates a GPT-2 model's perplexity on the Wikitext-2 dataset, ignoring padding tokens.
+    Evaluates a GPT-2 model's perplexity on a dataset, ignoring padding tokens.
     """
     model.eval()
     encodings = tokenizer("\n\n".join(test["text"]), return_tensors="pt")
@@ -48,5 +48,41 @@ def evaluate_perplexity(model, tokenizer, test=test, stride = 1024):
     avg_nll = nll_sum / n_tokens  # average negative log-likelihood per token
     ppl = torch.exp(avg_nll)
 
-    print(f"Perplexity on Wikitext-2: {ppl:.2f}")
     return ppl
+
+
+from datasets import load_dataset
+
+def evaluate_multiple_datasets(model, tokenizer):
+    """
+    Evaluates perplexity on WikiText-2, WikiText-103, and Penn Treebank (PTB)
+    using the existing evaluate_perplexity function.
+
+    Args:
+        model: Pretrained GPT-style model.
+        tokenizer: Corresponding tokenizer.
+        device (str): "cuda" or "cpu".
+    
+    Returns:
+        dict: Perplexity scores for each dataset.
+    """
+
+    dataset_map = {
+        "WikiText-2": load_dataset("wikitext", "wikitext-2-raw-v1", split="test"),
+        "Penn Treebank (PTB)": load_dataset("ptb_text_only", split="test"),
+        "WikiText-103": load_dataset("wikitext", "wikitext-103-raw-v1", split="test"),
+    }
+
+    results = {}
+    stride_map = {
+        "WikiText-2": 1024,
+        "Penn Treebank (PTB)": 128,
+        "WikiText-103": 1024
+    }
+    for dataset_name, dataset in dataset_map.items():
+        print(f"Evaluating {dataset_name}...")
+        ppl = evaluate_perplexity(model, tokenizer, test=dataset, stride=stride_map[dataset_name])
+        results[dataset_name] = ppl.item()  # Convert tensor to float
+        print(f"{dataset_name} Perplexity: {results[dataset_name]}")
+
+    return results
