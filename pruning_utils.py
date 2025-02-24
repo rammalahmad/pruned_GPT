@@ -3,6 +3,10 @@ import torch.nn as nn
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2Attention, GPT2MLP
 from torch.nn.modules.normalization import LayerNorm
 from transformers.pytorch_utils import Conv1D
+from lw_retrain_utils import evaluate_perplexity
+from tqdm.auto import tqdm, trange
+import numpy as np
+
 
 def model_size(model):
     """Computes the number of parameters in a model."""
@@ -78,8 +82,8 @@ def pruned_layernorm(layer: LayerNorm, idx, device) -> LayerNorm:
 
     # Copy weights and bias if affine transformation is used
     if layer.elementwise_affine:
-        new_layer.weight.data = layer.weight.data[idx].to(dtype)
-        new_layer.bias.data = layer.bias.data[idx].to(dtype)
+        new_layer.weight.data = layer.weight.data[idx].clone().to(dtype)
+        new_layer.bias.data = layer.bias.data[idx].clone().to(dtype)
     if hasattr(layer, "importance_scores"):
         new_layer.importance_scores = layer.importance_scores
     new_layer.weight.requires_grad = True
@@ -120,8 +124,7 @@ def pruned_embedding(layer: nn.Embedding, idx, device, dim=0) -> nn.Embedding:
     new_layer.weight.requires_grad = True
 
     return new_layer
-
-  
+    
     
 def compute_pruned_sums(module, pruned_heads: torch.Tensor) -> torch.Tensor:
     """Computes the sum of pruned heads for QKV weights and bias."""
@@ -227,3 +230,28 @@ def pruned_attention(attn_layer, top_heads, model_device, residual_error=False):
     attn_layer.num_heads = len(top_heads)
 
     return attn_layer
+
+
+def pruned_block(model, tokenizer, num_layers_to_remove):
+    iteration_ppls = [evaluate_perplexity(model, tokenizer)]
+    print(f"Initial PPL: {iteration_ppls[0]:.2f}")
+    js = []
+
+    for i in trange(num_layers_to_remove, desc="Evaluating iterations...", leave=True):
+        ppls = []
+        for j in trange(len(model.transformer.h), desc=f"Evaluating missing layers...", leave=False):
+            layer = model.transformer.h[j]
+            model.transformer.h.pop(j)
+            try:
+                ppl = evaluate_perplexity(model, tokenizer)
+            finally:
+                model.transformer.h.insert(j, layer)
+            torch.cuda.empty_cache()
+            ppls.append(ppl)
+
+        # find i for which ppl is minimal
+        j = int(np.argmin(ppls))
+        js.append(j)
+        model.transformer.h.pop(j)
+        iteration_ppls.append(ppls[j])
+        print(f"Removed layer {j}. {len(model.transformer.h)} layers left. PPL: {ppls[j]:.2f}")
