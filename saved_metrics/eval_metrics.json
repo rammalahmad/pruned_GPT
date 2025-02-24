@@ -8,9 +8,11 @@
     "num_heads=12_hidden_size=2.5_embed_size=1024_before_training": 4573.84326171875,
     "untrained_num_heads=12_hidden_size=2.5_embed_size=1024_before_training": 58997.2265625,
     "untrained_num_heads=12_hidden_size=2.5_embed_size=1024": 5257.4375,
-    "num_heads=16_hidden_size=4096_embed_size=768_before_training": 2.4e21,
+    "num_heads=16_hidden_size=4096_embed_size=768_before_training": 2.4e+21,
     "num_heads=10_hidden_size=2.5_embed_size=640": 2722.51,
-    "num_heads=10_hidden_size=2.5_embed_size=640_before_training": 5.4e15,
-    "gpt_2_small_untrained": 2586.666259765625,	
-    "gpt_2_small_untrained_before": 54769.81
+    "num_heads=10_hidden_size=2.5_embed_size=640_before_training": 5400000000000000.0,
+    "gpt_2_small_untrained": 2586.666259765625,
+    "gpt_2_small_untrained_before": 54769.81,
+    "depth=16_before_training": 43.56428146362305,
+    "depth=16": 35.080421447753906
 }
