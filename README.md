@@ -16,7 +16,7 @@ Our approach includes **neural architecture search** to evaluate different pruni
 - **Width + Depth pruning:** A combined approach for optimal compression.  
 
 ### **Results**  
-The table below compares the perplexity (PPL) scores on WikiText-2, Lambada, and PTB datasets, along with validation loss after lightweight retraining.  
+The table below compares the perplexity (PPL) scores on WikiText-2, Lambada, and PTB datasets, along with validation loss after lightweight retraining between our pruned models and the original GPT-2 models.
 
 | Model | Size (M) | WikiText-2 (PPL) | Lambada (PPL) | PTB (PPL) | KD Val Loss |
 |--------|--------|----------------|--------------|----------|-------------|
