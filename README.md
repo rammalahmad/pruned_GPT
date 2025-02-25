@@ -47,7 +47,3 @@ The table below compares the perplexity (PPL) scores on WikiText-2, Lambada, and
 
 **Hardware Used:**  
 - **GPU:** NVIDIA RTX A5000 (24.5GB VRAM)  
-
----
-
-This version enhances readability, keeps key points concise, and improves the visual structure. Let me know if you need further tweaks! 🚀
