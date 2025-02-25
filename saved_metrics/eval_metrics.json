@@ -17,5 +17,6 @@
     "depth=16": 35.080421447753906,
     "depth=20_num_heads=12_mlp_exp=3.5_embed_size=1024_before_training": 85.16101837158203,
     "depth=20_num_heads=12_mlp_exp=3.5_embed_size=1024": 36.6318473815918,
-    "num_heads=12_mlp_exp=2.5_embed_size=1024_before_training": 4044.10888671875
+    "num_heads=12_mlp_exp=2.5_embed_size=1024_before_training": 4044.10888671875,
+    "num_heads=12_mlp_exp=2.5_embed_size=1024": 47.867706298828125
 }

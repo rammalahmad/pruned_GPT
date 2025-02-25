@@ -244,7 +244,12 @@
             "step": 140
         }
     ],
-    "num_heads=10_hidden_size=2.5_embed_size=640": [
+    "num_heads=10_mlp_exp=2.5_embed_size=640": [
+        {
+            "step": 5,
+            "loss": 8.41313,
+            "eval_loss": 8.38459
+        },
         {
             "step": 30,
             "loss": 7.8657,
@@ -292,6 +297,14 @@
         }
     ],
     "gpt_2_small_untrained": [
+        {
+            "eval_loss": 10.01389,
+            "eval_runtime": 22.5507,
+            "eval_samples_per_second": 44.345,
+            "eval_steps_per_second": 11.086,
+            "epoch": 0.035555555555555556,
+            "step": 5
+        },
         {
             "loss": 10.1079,
             "grad_norm": 4.676259517669678,
